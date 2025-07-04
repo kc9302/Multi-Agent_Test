@@ -3,7 +3,13 @@ from langgraph.graph import StateGraph, START, END
 from multi_agent import State, find_target, math, english, korea_history, retrieve, get_route
 
 
-def graph_builder():    
+_graph = None
+
+
+def graph_builder():
+    global _graph
+    if _graph is not None:
+        return _graph
     graph_build = StateGraph(State)
 
     # 노드 추가
@@ -31,9 +37,10 @@ def graph_builder():
     graph_build.add_edge("Korea_history", END)
 
     # 그래프 생성
-    graph = graph_build.compile()
-    
-    return graph
+    _graph = graph_build.compile()
+
+    return _graph
 
 def activate_agent(question):
-    return graph_builder().invoke({"messages": question})
+    graph = graph_builder()
+    return graph.invoke({"messages": question})
