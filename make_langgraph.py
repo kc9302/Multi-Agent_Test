@@ -1,15 +1,18 @@
 from langgraph.graph import StateGraph, START, END
 
-from multi_agent import State, find_target, math, english, korea_history, retrieve, get_route
-
-
-_graph = None
+from multi_agent import (
+    State,
+    find_target,
+    math,
+    english,
+    korea_history,
+    retrieve,
+    get_route,
+)
 
 
 def graph_builder():
-    global _graph
-    if _graph is not None:
-        return _graph
+    """Compile the agent graph."""
     graph_build = StateGraph(State)
 
     # 노드 추가
@@ -25,10 +28,10 @@ def graph_builder():
         "Find_target",
         get_route,
         {
-        "수학":"Math",
-        "영어":"English",
-        "한국사":"Retrieve",
-        }
+            "수학": "Math",
+            "영어": "English",
+            "한국사": "Retrieve",
+        },
     )
 
     graph_build.add_edge("Math", END)
@@ -37,10 +40,12 @@ def graph_builder():
     graph_build.add_edge("Korea_history", END)
 
     # 그래프 생성
-    _graph = graph_build.compile()
+    return graph_build.compile()
 
-    return _graph
+
+_GRAPH = graph_builder()
+
 
 def activate_agent(question):
-    graph = graph_builder()
-    return graph.invoke({"messages": question})
+    """Run the pre-built agent graph."""
+    return _GRAPH.invoke({"messages": question})

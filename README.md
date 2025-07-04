@@ -20,8 +20,14 @@ pip install -r requirements.txt
 ```python
 from make_langgraph import activate_agent
 
-question = [{"role": "user", "content": "구석기 시대에 대해 알려줘"}]
+# 질문은 role, content 형태의 메시지 리스트로 전달합니다.
+question = [
+    {"role": "user", "content": "영어로 사자를 뭐라고 하나요?"}
+]
+
+# activate_agent 실행 → {"answer": "...", "target": "..."} 형태의 결과 반환
 result = activate_agent(question)
+
 print(result["answer"])
 ```
 
