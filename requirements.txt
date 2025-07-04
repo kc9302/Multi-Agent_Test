@@ -1,0 +1,11 @@
+torch
+transformers
+bitsandbytes
+accelerate
+langchain
+langchain-community
+langchain-core
+langchain-huggingface
+langgraph
+unsloth
+faiss-cpu
