@@ -1,22 +1,3 @@
-import os
-import re
-from typing import Annotated, TypedDict
-from typing_extensions import List
-import torch
-from transformers import AutoTokenizer, pipeline, BitsAndBytesConfig
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.document_loaders import TextLoader
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_core.prompts import PromptTemplate
-from langchain_core.documents import Document
-from langgraph.graph.message import add_messages
-import gc
-from unsloth import FastLanguageModel
-
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-
-# --- Cached objects -------------------------------------------------------
 _math_model = None
 _math_tokenizer = None
 _english_pipeline = None
@@ -42,12 +23,77 @@ def get_math_model():
     return _math_model, _math_tokenizer
 
 
-@ @-118
+def get_english_pipeline():
+    """Create english generation pipeline once."""
+    global _english_pipeline, _english_tokenizer
+    if _english_pipeline is None:
+        model_id = "Qwen/Qwen2-7B-Instruct"
+        _english_tokenizer = AutoTokenizer.from_pretrained(
+            model_id, truncation=True, model_max_length=512
+        )
+        _english_pipeline = pipeline(
+            "text-generation",
+            model=model_id,
+            tokenizer=_english_tokenizer,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+            model_kwargs={
+                "quantization_config": BitsAndBytesConfig(
+                    load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16
+                )
+            },
+        )
+    return _english_pipeline, _english_tokenizer
 
-, 243 + 116, 221 @ @
+
+def get_korea_history_pipeline():
+    """Create Korea history generation pipeline once."""
+    global _korea_history_pipeline, _korea_history_tokenizer
+    if _korea_history_pipeline is None:
+        model_id = "Qwen/Qwen2-7B-Instruct"
+        _korea_history_tokenizer = AutoTokenizer.from_pretrained(
+            model_id, truncation=True, model_max_length=1024
+        )
+        _korea_history_pipeline = pipeline(
+            "text-generation",
+            model=model_id,
+            tokenizer=_korea_history_tokenizer,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+            model_kwargs={
+                "quantization_config": BitsAndBytesConfig(
+                    load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16
+                )
+            },
+        )
+    return _korea_history_pipeline, _korea_history_tokenizer
+
+
+def get_find_target_pipeline():
+    """Create target classification pipeline once."""
+    global _find_target_pipeline, _find_target_tokenizer
+    if _find_target_pipeline is None:
+        model_id = "Qwen/Qwen2-7B-Instruct"
+        _find_target_tokenizer = AutoTokenizer.from_pretrained(model_id)
+        _find_target_pipeline = pipeline(
+            "text-generation",
+            model=model_id,
+            tokenizer=_find_target_tokenizer,
+            device_map="auto",
+            batch_size=32,
+            torch_dtype=torch.bfloat16,
+            model_kwargs={
+                "quantization_config": BitsAndBytesConfig(
+                    load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16
+                )
+            },
+        )
+    return _find_target_pipeline, _find_target_tokenizer
 
 
 def get_rag_retriever():
+    """Load RAG retriever once and reuse."""
+    global _rag_retriever
     if _rag_retriever is None:
         loader = TextLoader("rag_file.txt")
         text_splitter = RecursiveCharacterTextSplitter(
@@ -96,17 +142,18 @@ def math(state: State):
 
     message = [
         {"role": "system", "content": persona},
-        {"role": "user", "content": state["messages"][0].content},
+        {"role": "user", "content": state["messages"][0].content}
     ]
 
     model, math_assistant_tokenizer = get_math_model()
 
-    prompt = math_assistant_tokenizer.apply_chat_template(
-        message, tokenize=True, add_generation_prompt=True, return_tensors="pt"
-    ).to("cuda")
+    prompt = math_assistant_tokenizer.apply_chat_template(message, tokenize=True, add_generation_prompt=True,
+                                                          return_tensors="pt").to("cuda")
 
     # Generate text
-    result = model.generate(input_ids=prompt, max_new_tokens=1024, use_cache=True)
+    result = model.generate(input_ids=prompt,
+                            max_new_tokens=1024,
+                            use_cache=True)
     answer = math_assistant_tokenizer.decode(result[0])
     answer = answer.split("<|im_sep|>")[3]
     answer = answer.replace("\n", "")
@@ -114,6 +161,16 @@ def math(state: State):
     gc.collect()
 
     return State(answer=answer)
+
+
+# def math(state: State):
+#     print("수학 에이전트 실행")
+#     torch.cuda.empty_cache()
+#     persona = """
+#     SYSTEM:
+#     You are a fact-based AI assistant called '위키쌤' who answers questions from Korean elementary school students.
+#     위키쌤 is kind and solves problems step by step.
+#     Tasks that correspond to counseling CANNOT be performed.
 
 
 def english(state: State):
@@ -139,13 +196,11 @@ def english(state: State):
 
     message = [
         {"role": "system", "content": persona},
-        {"role": "user", "content": state["messages"][0].content},
+        {"role": "user", "content": state["messages"][0].content}
     ]
 
     english_assistant_pipeline, english_assistant_tokenizer = get_english_pipeline()
-    prompt = english_assistant_tokenizer.apply_chat_template(
-        message, add_generation_prompt=True, tokenize=False
-    )
+    prompt = english_assistant_tokenizer.apply_chat_template(message, add_generation_prompt=True, tokenize=False)
 
     # Generate text
     sequences = english_assistant_pipeline(
@@ -154,7 +209,7 @@ def english(state: State):
         temperature=0.7,
         top_p=0.9,
         num_return_sequences=1,
-        max_length=512,
+        max_length=512
     )
     answer = sequences[0]["generated_text"].split("assistant")[2]
     answer = answer.replace("\n", "")
@@ -197,7 +252,7 @@ def korea_history(state: State):
 
     message = [
         {"role": "system", "content": str(persona.invoke({"context": docs_content}))},
-        {"role": "user", "content": state["messages"][0].content},
+        {"role": "user", "content": state["messages"][0].content}
     ]
 
     korea_history_pipeline, korea_history_tokenizer = get_korea_history_pipeline()
@@ -212,7 +267,7 @@ def korea_history(state: State):
         temperature=0.7,
         top_p=0.9,
         num_return_sequences=1,
-        max_length=1024,
+        max_length=1024
     )
     answer = sequences[0]["generated_text"][2]["content"]
     answer = answer.replace("\n", "")
@@ -232,7 +287,7 @@ def find_target(state: State):
 
     message = [
         {"role": "system", "content": persona},
-        {"role": "user", "content": state["messages"][0].content},
+        {"role": "user", "content": state["messages"][0].content}
     ]
 
     find_target_pipeline, find_target_tokenizer = get_find_target_pipeline()
@@ -247,7 +302,7 @@ def find_target(state: State):
         temperature=0.7,
         top_p=0.9,
         num_return_sequences=1,
-        max_length=300,
+        max_length=300
     )
 
     gc.collect()
