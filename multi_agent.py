@@ -194,9 +194,6 @@ def math(state: State):
 #     You are a fact-based AI assistant called '위키쌤' who answers questions from Korean elementary school students.
 #     위키쌤 is kind and solves problems step by step.
 #     Tasks that correspond to counseling CANNOT be performed.
-@ @-147
-
-, 211 + 253, 161 @ @
 
 
 def english(state: State):
